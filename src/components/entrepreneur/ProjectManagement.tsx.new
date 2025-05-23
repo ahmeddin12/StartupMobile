@@ -1,0 +1,730 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { Card, Title, Paragraph, Button, ProgressBar, Chip, Divider } from 'react-native-paper';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { FontAwesome5, MaterialIcons, MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import api from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
+
+interface Project {
+  id: string;
+  startupCallId: string;
+  startupCallTitle: string;
+  budget: {
+    id: string;
+    totalAmount: number;
+    spent: number;
+    remaining: number;
+    categories: Array<{
+      id: string;
+      name: string;
+      allocatedAmount: number;
+      spent: number;
+      remaining: number;
+    }>;
+    expenses: Array<{
+      id: string;
+      title: string;
+      amount: number;
+      date: string;
+      categoryId: string;
+      status: string;
+    }>;
+  };
+  tasks: {
+    total: number;
+    completed: number;
+    pending: number;
+  };
+  timeline: {
+    milestones: Array<{
+      id: string;
+      title: string;
+      dueDate: string;
+      status: string;
+    }>;
+  };
+}
+
+// Mock project data for testing (will replace with API call later)
+const mockProject: Project = {
+  id: 'proj-1',
+  startupCallId: 'call-1',
+  startupCallTitle: 'Tech Innovation Grant',
+  budget: {
+    id: 'budget-1',
+    totalAmount: 50000,
+    spent: 22500,
+    remaining: 27500,
+    categories: [
+      {
+        id: 'cat-1',
+        name: 'Development',
+        allocatedAmount: 20000,
+        spent: 12000,
+        remaining: 8000,
+      },
+      {
+        id: 'cat-2',
+        name: 'Marketing',
+        allocatedAmount: 15000,
+        spent: 5500,
+        remaining: 9500,
+      },
+      {
+        id: 'cat-3',
+        name: 'Operations',
+        allocatedAmount: 15000,
+        spent: 5000,
+        remaining: 10000,
+      },
+    ],
+    expenses: [
+      {
+        id: 'exp-1',
+        title: 'Software Licenses',
+        amount: 5000,
+        date: '2025-04-15T10:00:00Z',
+        categoryId: 'cat-1',
+        status: 'approved',
+      },
+      {
+        id: 'exp-2',
+        title: 'Developer Salaries',
+        amount: 7000,
+        date: '2025-04-20T10:00:00Z',
+        categoryId: 'cat-1',
+        status: 'approved',
+      },
+      {
+        id: 'exp-3',
+        title: 'Digital Advertising',
+        amount: 3500,
+        date: '2025-04-25T10:00:00Z',
+        categoryId: 'cat-2',
+        status: 'approved',
+      },
+      {
+        id: 'exp-4',
+        title: 'Office Supplies',
+        amount: 2000,
+        date: '2025-05-01T10:00:00Z',
+        categoryId: 'cat-3',
+        status: 'approved',
+      },
+      {
+        id: 'exp-5',
+        title: 'Website Design',
+        amount: 2000,
+        date: '2025-05-05T10:00:00Z',
+        categoryId: 'cat-2',
+        status: 'approved',
+      },
+      {
+        id: 'exp-6',
+        title: 'Equipment Purchase',
+        amount: 3000,
+        date: '2025-05-10T10:00:00Z',
+        categoryId: 'cat-3',
+        status: 'approved',
+      },
+    ],
+  },
+  tasks: {
+    total: 12,
+    completed: 7,
+    pending: 5,
+  },
+  timeline: {
+    milestones: [
+      {
+        id: 'ms-1',
+        title: 'MVP Development',
+        dueDate: '2025-04-30T00:00:00Z',
+        status: 'completed',
+      },
+      {
+        id: 'ms-2',
+        title: 'User Testing',
+        dueDate: '2025-05-15T00:00:00Z',
+        status: 'in_progress',
+      },
+      {
+        id: 'ms-3',
+        title: 'Marketing Launch',
+        dueDate: '2025-06-01T00:00:00Z', 
+        status: 'pending',
+      },
+      {
+        id: 'ms-4',
+        title: 'First Customer Acquisition',
+        dueDate: '2025-06-15T00:00:00Z',
+        status: 'pending',
+      },
+    ],
+  },
+};
+
+const ProjectManagement = () => {
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const navigation = useNavigation();
+
+  // Fetch project data when component mounts or screen comes into focus
+  const fetchProject = useCallback(async () => {
+    try {
+      setLoading(true);
+      
+      // Try to fetch from actual API endpoint first
+      try {
+        const response = await api.get('/api/entrepreneur/project');
+        if (response.data) {
+          setProject(response.data);
+          setError(null);
+          setLoading(false);
+          return;
+        }
+      } catch (apiError) {
+        console.log('Could not fetch from API, using mock data:', apiError);
+      }
+      
+      // Fallback to mock data
+      setProject(mockProject);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching project data:', error);
+      setError('Failed to load project data. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch data on mount
+  useEffect(() => {
+    fetchProject();
+  }, [fetchProject]);
+
+  // Refresh data when the screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchProject();
+    }, [fetchProject])
+  );
+
+  // Format currency with error handling (exactly like web version)
+  const formatCurrency = (amount: number) => {
+    try {
+      return '$' + amount.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+    } catch (error) {
+      console.error('Error formatting currency:', error);
+      return '$0.00';
+    }
+  };
+
+  // Calculate category percentage with error handling (exactly like web version)
+  const calculateCategoryPercentage = (spent: number, allocated: number) => {
+    if (allocated <= 0) return 0;
+    try {
+      return (spent / allocated);
+    } catch (error) {
+      console.error('Error calculating category percentage:', error);
+      return 0;
+    }
+  };
+
+  // Format date helper with error handling (exactly like web version)
+  const formatDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
+
+  // Check if milestone is overdue (same logic as web version)
+  const isOverdue = (dateString: string) => {
+    try {
+      const dueDate = new Date(dateString);
+      const today = new Date();
+      return dueDate < today && today.getTime() - dueDate.getTime() > 24 * 60 * 60 * 1000;
+    } catch (error) {
+      console.error('Error checking if overdue:', error);
+      return false;
+    }
+  };
+
+  // Calculate days overdue
+  const getDaysOverdue = (dateString: string) => {
+    try {
+      const dueDate = new Date(dateString);
+      const today = new Date();
+      return Math.ceil((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    } catch (error) {
+      console.error('Error calculating days overdue:', error);
+      return 0;
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading project data...</Text>
+      </View>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <View style={styles.errorContainer}>
+        <MaterialIcons name="error-outline" size={48} color="#e53e3e" style={styles.errorIcon} />
+        <Text style={styles.errorText}>
+          {error || "No project data is available for your startup right now."}
+        </Text>
+      </View>
+    );
+  }
+
+  // Calculate budget percentages with error handling
+  const spentPercentage = project.budget.totalAmount > 0
+    ? (project.budget.spent / project.budget.totalAmount)
+    : 0;
+
+  return (
+    <ScrollView style={styles.scrollView}>
+      {/* Project Overview Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>Project Overview</Title>
+          <Text style={styles.cardSubtitle}>{project.startupCallTitle}</Text>
+          
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="cash" size={24} color="#007AFF" />
+              <Text style={styles.statTitle}>Total Budget</Text>
+              <Text style={styles.statValue}>{formatCurrency(project.budget.totalAmount)}</Text>
+            </View>
+            
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="cash-minus" size={24} color="#e53e3e" />
+              <Text style={styles.statTitle}>Spent</Text>
+              <Text style={styles.statValue}>{formatCurrency(project.budget.spent)}</Text>
+            </View>
+            
+            <View style={styles.statItem}>
+              <MaterialCommunityIcons name="cash-plus" size={24} color="#38a169" />
+              <Text style={styles.statTitle}>Remaining</Text>
+              <Text style={styles.statValue}>{formatCurrency(project.budget.remaining)}</Text>
+            </View>
+          </View>
+
+          <Text style={styles.progressLabel}>Budget Utilization ({Math.round(spentPercentage * 100)}%)</Text>
+          <ProgressBar progress={spentPercentage} color="#007AFF" style={styles.progressBar} />
+          
+          <View style={styles.taskStats}>
+            <Text style={styles.taskStatsTitle}>Tasks Progress</Text>
+            <Text style={styles.taskStatsValue}>
+              {project.tasks.completed} of {project.tasks.total} tasks completed
+            </Text>
+            <ProgressBar 
+              progress={project.tasks.completed / project.tasks.total} 
+              color="#38a169" 
+              style={styles.progressBar} 
+            />
+          </View>
+          
+          <TouchableOpacity 
+            style={styles.viewAllButton}
+            onPress={() => Alert.alert('Coming Soon', 'Detailed task management is coming soon!')}
+          >
+            <Text style={styles.viewAllButtonText}>View Task Details</Text>
+          </TouchableOpacity>
+        </Card.Content>
+      </Card>
+
+      {/* Budget Categories Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>Budget Categories</Title>
+          
+          {project.budget.categories.map((category) => (
+            <View key={category.id} style={styles.categoryItem}>
+              <View style={styles.categoryHeader}>
+                <Text style={styles.categoryTitle}>{category.name}</Text>
+                <Text style={styles.categoryBudget}>
+                  {formatCurrency(category.allocatedAmount)}
+                </Text>
+              </View>
+              <ProgressBar 
+                progress={calculateCategoryPercentage(category.spent, category.allocatedAmount)} 
+                color={category.spent > category.allocatedAmount ? '#e53e3e' : '#38a169'} 
+                style={styles.progressBar}
+              />
+              <View style={styles.categoryProgress}>
+                <Text style={styles.categoryProgressText}>
+                  Spent: {formatCurrency(category.spent)}
+                </Text>
+                <Text style={styles.categoryProgressText}>
+                  Remaining: {formatCurrency(category.remaining)}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </Card.Content>
+      </Card>
+
+      {/* Milestones Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>Project Milestones</Title>
+          
+          {project.timeline.milestones.length === 0 ? (
+            <View style={styles.noExpensesContainer}>
+              <Text style={styles.noExpensesText}>No milestones defined yet</Text>
+            </View>
+          ) : (
+            <View>
+              {project.timeline.milestones.map((milestone) => (
+                <View key={milestone.id} style={styles.milestoneItem}>
+                  <View style={styles.milestoneHeader}>
+                    <Text style={styles.milestoneTitle}>{milestone.title}</Text>
+                    {milestone.status === 'completed' ? (
+                      <Text style={[styles.statusText, styles.completed]}>Completed</Text>
+                    ) : isOverdue(milestone.dueDate) ? (
+                      <Text style={[styles.statusText, styles.overdueBadge]}>Overdue</Text>
+                    ) : (
+                      <Text style={[styles.statusText, styles.inProgress]}>In Progress</Text>
+                    )}
+                  </View>
+                  <Text style={styles.milestoneDate}>
+                    Due: {formatDate(milestone.dueDate)}
+                  </Text>
+                  
+                  {milestone.status !== 'completed' && isOverdue(milestone.dueDate) && (
+                    <View style={styles.overdue}>
+                      <MaterialIcons name="warning" size={16} color="#e53e3e" />
+                      <Text style={styles.overdueText}>
+                        {getDaysOverdue(milestone.dueDate)} days overdue
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </Card.Content>
+      </Card>
+
+      {/* Expenses Card */}
+      <Card style={styles.card}>
+        <Card.Content>
+          <Title style={styles.cardTitle}>Expenses</Title>
+          
+          <View style={styles.expensesStats}>
+            <View style={styles.expenseStatItem}>
+              <Text style={styles.expenseStatLabel}>Total Spent</Text>
+              <Text style={styles.expenseStatValue}>
+                {formatCurrency(project.budget.spent)}
+              </Text>
+            </View>
+            
+            <View style={styles.expenseStatItem}>
+              <Text style={styles.expenseStatLabel}>Remaining</Text>
+              <Text style={styles.expenseStatValue}>
+                {formatCurrency(project.budget.remaining)}
+              </Text>
+            </View>
+            
+            <View style={styles.expenseStatItem}>
+              <Text style={styles.expenseStatLabel}>Budget Used</Text>
+              <Text style={styles.expenseStatValue}>
+                {Math.round(spentPercentage * 100)}%
+              </Text>
+            </View>
+            
+            <View style={styles.expenseStatItem}>
+              <Text style={styles.expenseStatLabel}>Total Budget</Text>
+              <Text style={styles.expenseStatValue}>
+                {formatCurrency(project.budget.totalAmount)}
+              </Text>
+            </View>
+          </View>
+          
+          <Text style={styles.projectContactNote}>
+            For detailed expense tracking and management, please contact your project manager
+          </Text>
+          
+          <Button 
+            mode="outlined" 
+            style={styles.contactButton}
+            onPress={() => Alert.alert('Coming Soon', 'Contacting project manager functionality is coming soon!')}
+          >
+            Contact Project Manager
+          </Button>
+        </Card.Content>
+      </Card>
+
+      {/* Bottom padding */}
+      <View style={styles.bottomPadding} />
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#718096',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorIcon: {
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#e53e3e',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  scrollView: {
+    flex: 1,
+    padding: 16,
+  },
+  card: {
+    marginBottom: 16,
+    borderRadius: 8,
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 6,
+    color: '#1a202c'
+  },
+  cardSubtitle: {
+    fontSize: 14,
+    color: '#4a5568',
+    marginBottom: 12,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  statItem: {
+    alignItems: 'center',
+    width: '30%',
+  },
+  statTitle: {
+    fontSize: 12,
+    color: '#718096',
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  progressLabel: {
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 4,
+  },
+  taskStats: {
+    marginTop: 16,
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 6,
+  },
+  taskStatsTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  taskStatsValue: {
+    fontSize: 14,
+    marginBottom: 8,
+    color: '#4a5568',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    marginTop: 4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    alignSelf: 'center',
+    paddingVertical: 8,
+  },
+  viewAllButtonText: {
+    color: '#007AFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  categoryItem: {
+    marginBottom: 14,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  categoryTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  categoryBudget: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  categoryProgress: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  categoryProgressText: {
+    fontSize: 13,
+    color: '#4a5568',
+  },
+  milestoneItem: {
+    marginBottom: 14,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  milestoneHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  milestoneTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+  },
+  milestoneStatus: {
+    marginLeft: 8,
+  },
+  milestoneDate: {
+    fontSize: 13,
+    color: '#718096',
+    marginTop: 2,
+  },
+  overdue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  overdueText: {
+    fontSize: 13,
+    color: '#e53e3e',
+    marginLeft: 4,
+  },
+  statusText: {
+    textAlign: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    overflow: 'hidden',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  completed: {
+    backgroundColor: 'rgba(56, 161, 105, 0.15)',
+    color: '#38a169',
+  },
+  inProgress: {
+    backgroundColor: 'rgba(237, 137, 54, 0.15)',
+    color: '#ed8936',
+  },
+  overdueBadge: {
+    backgroundColor: 'rgba(229, 62, 62, 0.15)',
+    color: '#e53e3e',
+  },
+  expensesStats: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingBottom: 16,
+    marginBottom: 16,
+  },
+  expenseStatItem: {
+    width: '48%',
+    marginBottom: 12,
+  },
+  expenseStatLabel: {
+    fontSize: 13,
+    color: '#718096',
+    marginBottom: 2,
+  },
+  expenseStatValue: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  noExpensesContainer: {
+    alignItems: 'center',
+    padding: 20,
+  },
+  noExpensesText: {
+    fontSize: 14,
+    color: '#718096',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  projectContactNote: {
+    fontSize: 14,
+    color: '#718096',
+    textAlign: 'center',
+    marginVertical: 16,
+  },
+  contactButton: {
+    alignSelf: 'center',
+  },
+  bottomPadding: {
+    height: 50,
+  },
+  divider: {
+    marginVertical: 8,
+  }
+});
+
+export default ProjectManagement;
